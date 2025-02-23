@@ -4,6 +4,7 @@ import dataclasses
 import gc
 import inspect
 import itertools
+import os
 import time
 import weakref
 from contextlib import contextmanager
@@ -58,6 +59,8 @@ from vllm.worker.model_runner_base import (
     _add_sampling_metadata_broadcastable_dict,
     _init_attn_metadata_from_tensor_dict,
     _init_sampling_metadata_from_tensor_dict)
+
+from torchgraph.graph.dynamo.tools import dynamo_and_dump
 
 if TYPE_CHECKING:
     from vllm.attention.backends.abstract import AttentionBackend
@@ -1109,14 +1112,11 @@ class GPUModelRunnerBase(ModelRunnerBase[TModelInputForGPU]):
     def load_model(self) -> None:
         logger.info("Starting to load model %s...", self.model_config.model)
         with DeviceMemoryProfiler(self.device) as m:
-            time_before_load = time.perf_counter()
             self.model = get_model(vllm_config=self.vllm_config)
-            time_after_load = time.perf_counter()
 
         self.model_memory_usage = m.consumed_memory
-        logger.info("Loading model weights took %.4f GB and %.6f seconds",
-                    self.model_memory_usage / float(2**30),
-                    time_after_load - time_before_load)
+        logger.info("Loading model weights took %.4f GB",
+                    self.model_memory_usage / float(2**30))
 
         if self.lora_config:
             assert supports_lora(
@@ -1724,17 +1724,37 @@ class ModelRunner(GPUModelRunnerBase[ModelInputForGPUWithSamplingMetadata]):
         if not bypass_model_exec:
             with set_forward_context(model_input.attn_metadata,
                                      self.vllm_config, virtual_engine):
-                hidden_or_intermediate_states = model_executable(
-                    input_ids=model_input.input_tokens,
-                    positions=model_input.input_positions,
-                    kv_caches=kv_caches,
-                    attn_metadata=model_input.attn_metadata,
-                    intermediate_tensors=intermediate_tensors,
-                    **MultiModalKwargs.as_kwargs(multi_modal_kwargs,
-                                                 device=self.device),
-                    **seqlen_agnostic_kwargs,
-                    **model_kwargs,
-                )
+                export_dir=os.environ.get("TG_EXPORT_DIR", None)
+                if export_dir is not None:
+                    def fn(m):
+                        return m(
+                            input_ids=model_input.input_tokens,
+                            positions=model_input.input_positions,
+                            kv_caches=kv_caches,
+                            attn_metadata=model_input.attn_metadata,
+                            intermediate_tensors=intermediate_tensors,
+                            **MultiModalKwargs.as_kwargs(multi_modal_kwargs,
+                                                        device=self.device),
+                            **seqlen_agnostic_kwargs,
+                            **model_kwargs,
+                        )
+
+                    _, _, _, res = dynamo_and_dump(model_executable, fn, dirname="qwen2_1layer/tp1", formats=["code"], rank=torch.distributed.get_rank(), compile_model_or_fn="model", return_res=True)
+                    hidden_or_intermediate_states = res
+                    torch.distributed.barrier()
+                    exit(1)
+                else:
+                    hidden_or_intermediate_states = model_executable(
+                        input_ids=model_input.input_tokens,
+                        positions=model_input.input_positions,
+                        kv_caches=kv_caches,
+                        attn_metadata=model_input.attn_metadata,
+                        intermediate_tensors=intermediate_tensors,
+                        **MultiModalKwargs.as_kwargs(multi_modal_kwargs,
+                                                    device=self.device),
+                        **seqlen_agnostic_kwargs,
+                        **model_kwargs,
+                    )
 
         if (self.observability_config is not None
                 and self.observability_config.collect_model_forward_time):
