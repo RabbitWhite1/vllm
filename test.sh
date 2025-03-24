@@ -27,6 +27,7 @@ export TG_USE_COMPILER_DISABLE=0
 
 export TG_USING_DYNAMO=1
 
+# export FORCE_VOCAB_SIZE=151944
 
 for num_layers in 1 2 4 8 12 16 28
 do

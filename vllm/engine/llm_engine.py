@@ -484,6 +484,10 @@ class LLMEngine:
         """Creates an LLM engine from the engine arguments."""
         # Create the engine configs.
         engine_config = engine_args.create_engine_config(usage_context)
+        # import os
+        # if s := os.environ.get("FORCE_VOCAB_SIZE") is not None:
+        #     s = int(s)
+        #     engine_config.model_config.hf_config.vocab_size = s
         executor_class = cls._get_executor_cls(engine_config)
         # Create the LLM engine.
         engine = cls(
