@@ -418,10 +418,6 @@ class DefaultModelLoader(BaseModelLoader):
                         f"checkpoint: {weights_not_loaded}")
 
             _process_weights_after_loading(model, model_config, target_device)
-
-            # model.model.start_layer = 0
-            # model.model.end_layer = 1
-            # model.model.layers = model.model.layers[:1]
         return model.eval()
 
 

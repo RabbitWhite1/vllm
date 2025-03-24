@@ -1724,7 +1724,8 @@ class ModelRunner(GPUModelRunnerBase[ModelInputForGPUWithSamplingMetadata]):
         if not bypass_model_exec:
             with set_forward_context(model_input.attn_metadata,
                                      self.vllm_config, virtual_engine):
-                export_dir=os.environ.get("TG_EXPORT_DIR", None)
+                export_dir=os.environ.get("TG_DUMP_DIRNAME", None)
+                os.makedirs(export_dir, exist_ok=True)
                 if export_dir is not None:
                     def fn(m):
                         return m(
@@ -1739,10 +1740,10 @@ class ModelRunner(GPUModelRunnerBase[ModelInputForGPUWithSamplingMetadata]):
                             **model_kwargs,
                         )
 
-                    _, _, _, res = dynamo_and_dump(model_executable, fn, dirname="qwen2_1layer/tp1", formats=["code"], rank=torch.distributed.get_rank(), compile_model_or_fn="model", return_res=True)
+                    _, _, _, res = dynamo_and_dump(model_executable, fn, dirname=export_dir, formats=["code"], rank=torch.distributed.get_rank(), compile_model_or_fn="model", return_res=True)
                     hidden_or_intermediate_states = res
                     torch.distributed.barrier()
-                    exit(1)
+                    exit(0)
                 else:
                     hidden_or_intermediate_states = model_executable(
                         input_ids=model_input.input_tokens,
