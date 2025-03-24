@@ -28,9 +28,9 @@ export TG_USE_COMPILER_DISABLE=0
 export TG_USING_DYNAMO=1
 
 
-for num_layers in 2 4 8 12 16 28
+for num_layers in 1 2 4 8 12 16 28
 do
-    for world_size in 1 2 4 6 8
+    for world_size in 1 2 4 8
     do
         export TG_DUMP_DIRNAME=qwen2/paral${world_size}_layer${num_layers}
         export nproc_per_node=${world_size}

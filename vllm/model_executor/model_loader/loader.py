@@ -418,6 +418,11 @@ class DefaultModelLoader(BaseModelLoader):
                         f"checkpoint: {weights_not_loaded}")
 
             _process_weights_after_loading(model, model_config, target_device)
+            if str(type(model)).find("Qwen2ForCausalLM") != -1:
+                num_layers = int(os.environ["NUM_LAYERS"])
+                model.model.start_layer = 0
+                model.model.end_layer = num_layers
+                model.model.layers = model.model.layers[:num_layers]
         return model.eval()
 
 

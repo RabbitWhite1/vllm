@@ -7,7 +7,7 @@ export TORCH_DISTRIBUTED_DEBUG=INFO # INFO/WARN
 """
 
 import argparse
-
+import os
 import torch
 from transformers import AutoTokenizer
 
@@ -29,18 +29,20 @@ sampling_params = SamplingParams(
 )
 
 # Input the model name or path. Can be GPTQ or AWQ models.
+os.environ["NUM_LAYERS"] = str(args.num_layers)
 llm = LLM(
     model="Qwen/Qwen2-1.5B-Instruct",
     tensor_parallel_size=args.tp_size,
     enforce_eager=True,
 )
-qwen2_for_causal_lm: "Qwen2ForCausalLM" = (
-    llm.llm_engine.model_executor.driver_worker.model_runner.model
-)
-qwen2_model: Qwen2Model = qwen2_for_causal_lm.model
-qwen2_model.start_layer = 0
-qwen2_model.end_layer = args.num_layers
-qwen2_model.layers = qwen2_model.layers[: args.num_layers]
+# Hack vllm/model_executor/model_loader/loader.py:421 to change the number of layers.
+# qwen2_for_causal_lm: "Qwen2ForCausalLM" = (
+#     llm.llm_engine.model_executor.driver_worker.model_runner.model
+# )
+# qwen2_model: Qwen2Model = qwen2_for_causal_lm.model
+# llm.llm_engine.model_executor.driver_worker.model_runner.model.model.start_layer = 0
+# llm.llm_engine.model_executor.driver_worker.model_runner.model.model.end_layer = args.num_layers
+# llm.llm_engine.model_executor.driver_worker.model_runner.model.model.layers = qwen2_model.layers[: args.num_layers]
 
 # Prepare your prompts
 prompt = "Tell me something about large language models."
